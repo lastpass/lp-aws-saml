@@ -4,7 +4,7 @@ This repository contains the LastPass AWS SAML login tool.
 
 If you are using LastPass Enterprise SAML with AWS, then this script eases the
 process of using the AWS CLI utility.  It retrieves a SAML assertion from
-LastPass and then converts it into a
+LastPass and then converts it into credentials for use with ```aws```.
 
 ## Requirements
 
