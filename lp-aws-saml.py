@@ -34,6 +34,7 @@ import xml.etree.ElementTree as ET
 from base64 import b64decode, b64encode
 from struct import pack
 import os
+import argparse
 
 import boto3
 from six.moves import input
@@ -249,18 +250,18 @@ def aws_assume_role(session, assertion, role_arn, principal_arn):
                 SAMLAssertion=b64encode(assertion))
 
 
-def aws_set_profile(user, response):
+def aws_set_profile(profile_name, response):
     """
     Save AWS credentials returned from Assume Role operation in
     ~/.aws/credentials INI file.  The credentials are saved in
-    a profile with the user's name.
+    a profile with [profile_name].
     """
     config_fn = os.path.expanduser("~/.aws/credentials")
 
     config = configparser.ConfigParser()
     config.read(config_fn)
 
-    section = user
+    section = profile_name
     try:
         config.add_section(section)
     except configparser.DuplicateSectionError:
@@ -282,13 +283,24 @@ def aws_set_profile(user, response):
 
 
 def main():
-    if len(sys.argv) < 3:
-        print "Usage: %s username saml-cfg-id" % sys.argv[0]
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Get temporary AWS access credentials using LastPass SAML Login')
+    parser.add_argument('username', type=str,
+                    help='the lastpass username')
+    parser.add_argument('saml_config_id', type=int,
+                    help='the lastpass SAML config id')
+    parser.add_argument('--profile-name', dest='profile_name',
+                    help='the name of AWS profile to save the data in (default username)')
 
-    username = sys.argv[1]
-    saml_cfg_id = int(sys.argv[2])
+    args = parser.parse_args()
+    
+    username = args.username
+    saml_cfg_id = args.saml_config_id
 
+    if args.profile_name is not None:
+        profile_name = args.profile_name
+    else:
+        profile_name = username
+    
     password = getpass()
 
     session = requests.Session()
@@ -300,12 +312,12 @@ def main():
     role = prompt_for_role(roles)
 
     response = aws_assume_role(session, assertion, role[0], role[1])
-    aws_set_profile(user, response)
+    aws_set_profile(profile_name, response)
 
-    print "A new AWS CLI profile '%s' has been added." % user
+    print "A new AWS CLI profile '%s' has been added." % profile_name
     print "You may now invoke the aws CLI tool as follows:"
     print
-    print "    aws --profile %s [...] " % user
+    print "    aws --profile %s [...] " % profile_name
     print
     print "This token expires in one hour."
 
