@@ -51,6 +51,8 @@ PROXY_SERVER = 'https://127.0.0.1:8443'
 logging.basicConfig(level=logging.CRITICAL)
 logger = logging.getLogger('lp-aws-saml')
 
+class MfaRequiredException(Exception):
+    pass
 
 def should_verify():
     """ Disable SSL validation only when debugging via proxy """
@@ -134,7 +136,7 @@ def lastpass_iterations(session, username):
     return iterations
 
 
-def lastpass_login(session, username, password):
+def lastpass_login(session, username, password, otp = None):
     """
     Log into LastPass with a given username and password.
     """
@@ -150,14 +152,21 @@ def lastpass_login(session, username, password):
         'hash': lastpass_login_hash(username, password, iterations),
         'iterations': iterations
     }
+    if otp is not None:
+        params['otp'] = otp
+
     r = session.post(lp_login_page, data=params, verify=should_verify())
     r.raise_for_status()
 
     doc = ET.fromstring(r.text)
     error = doc.find("error")
-    if error:
-        reason = error.get('message')
-        raise ValueError("Could not login to lastpass: %s" % reason)
+    if error is not None:
+        cause = error.get('cause')
+        if cause == 'googleauthrequired':
+            raise MfaRequiredException('Need MFA for this login')
+        else:
+            reason = error.get('message')
+            raise ValueError("Could not login to lastpass: %s" % reason)
 
 
 def get_saml_token(session, username, password, saml_cfg_id):
@@ -165,8 +174,6 @@ def get_saml_token(session, username, password, saml_cfg_id):
     Log into LastPass and retrieve a SAML token for a given
     SAML configuration.
     """
-    lastpass_login(session, username, password)
-
     logger.debug("Getting SAML token")
 
     # now logged in, grab the SAML token from the IdP-initiated login
@@ -292,6 +299,12 @@ def main():
     password = getpass()
 
     session = requests.Session()
+    try:
+      lastpass_login(session, username, password)
+    except MfaRequiredException:
+      otp = input("OTP: ")
+      lastpass_login(session, username, password, otp)
+
     assertion = get_saml_token(session, username, password, saml_cfg_id)
     print "Assertion: %s" % assertion
     roles = get_saml_aws_roles(assertion)
