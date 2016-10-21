@@ -318,7 +318,6 @@ def main():
       lastpass_login(session, username, password, otp)
 
     assertion = get_saml_token(session, username, password, saml_cfg_id)
-    print "Assertion: %s" % assertion
     roles = get_saml_aws_roles(assertion)
     user = get_saml_nameid(assertion)
 
